@@ -157,6 +157,40 @@ def convert_shape_format(piece):
 
     return positions
 
+def valid_space(piece, grid):
+    """
+    ピースがグリッド内の有効な位置（壁や他のブロックと衝突しない）にいるかチェックする
+    """
+    # グリッド上の空いているマスを全件取得して、ピースのブロックがそこに含まれるかチェック
+    # ただし、画面より上にはみ出している場合は有効とみなす
+    accepted_positions = [[(j, i) for j in range(GRID_WIDTH) if grid[i][j] == (0,0,0)] for i in range(GRID_HEIGHT)]
+    accepted_positions = [j for sub in accepted_positions for j in sub]
+
+    formatted = convert_shape_format(piece)
+
+    for pos in formatted:
+        if pos not in accepted_positions:
+            if pos[1] > -1:
+                return False
+    return True
+
+def check_game_over(grid):
+    """グリッドの最上段にブロックがあればゲームオーバーと判定する"""
+    for x in range(len(grid[0])):
+        if grid[0][x] != (0,0,0):
+            return True
+    return False
+
+def lock_piece(piece, grid):
+    """着地したピースをグリッドに固定する"""
+    shape_pos = convert_shape_format(piece)
+    for pos in shape_pos:
+        x, y = pos
+        # グリッド内にピースの形状を書き込む
+        if y > -1:
+            grid[y][x] = piece.color
+    return grid
+
 def get_shape():
     """
     ランダムな形状の新しいPieceオブジェクトを生成して返す
@@ -211,13 +245,44 @@ def main():
     current_piece = get_shape()
     next_piece = get_shape() # 次のピースも用意しておく
 
+    # ゲームクロックと重力設定
+    clock = pygame.time.Clock()
+    fall_time = 0
+    fall_speed = 0.3 # 秒 / 1ライン落下
+
     running = True
     # メインゲームループ
     while running:
+        fall_time += clock.get_rawtime()
+        clock.tick()
+
+        # 重力処理
+        if fall_time/1000 > fall_speed:
+            fall_time = 0
+            current_piece.y += 1
+            if not valid_space(current_piece, grid) and current_piece.y > 0:
+                current_piece.y -= 1
+                grid = lock_piece(current_piece, grid)
+                current_piece = next_piece
+                next_piece = get_shape()
+
+                if check_game_over(grid):
+                    running = False
+
         # イベント処理
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
+
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_LEFT:
+                    current_piece.x -= 1
+                    if not valid_space(current_piece, grid):
+                        current_piece.x += 1
+                if event.key == pygame.K_RIGHT:
+                    current_piece.x += 1
+                    if not valid_space(current_piece, grid):
+                        current_piece.x -= 1
 
         # 描画処理
         draw_window(screen, grid, current_piece)
