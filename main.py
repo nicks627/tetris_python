@@ -20,6 +20,14 @@ PLAYFIELD_HEIGHT = GRID_HEIGHT * BLOCK_SIZE
 TOP_LEFT_X = (SCREEN_WIDTH - PLAYFIELD_WIDTH) // 2
 TOP_LEFT_Y = SCREEN_HEIGHT - PLAYFIELD_HEIGHT - 50 # 画面下部に少し余白を設ける
 
+# --- ゲーム設定 ---
+FONT_NAME = 'comicsans'
+FONT_SIZE_NORMAL = 30
+FONT_SIZE_LARGE = 80
+INITIAL_FALL_SPEED = 0.3
+MIN_FALL_SPEED = 0.1
+SPEED_INCREASE_PER_LEVEL = 0.02
+
 # --- テトリミノの形状定義 ---
 
 S = [['.....',
@@ -126,7 +134,7 @@ T = [['.....',
 
 # --- グローバル変数 ---
 shapes = [S, Z, I, O, J, L, T]
-shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (255, 165, 0), (0, 0, 255), (128, 0, 128)] # Green, Red, Cyan, Yellow, Orange, Blue, Purple
+shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (255, 165, 0), (0, 0, 255), (128, 0, 128)] # 緑, 赤, シアン, 黄, オレンジ, 青, 紫
 point_values = {1: 100, 2: 300, 3: 500, 4: 800}
 
 
@@ -161,19 +169,19 @@ def convert_shape_format(piece):
 
 def valid_space(piece, grid):
     """
-    ピースがグリッド内の有効な位置（壁や他のブロックと衝突しない）にいるかチェックする
+    指定されたピースがグリッド内で有効な位置にいるかチェックする
+    (壁や他のブロックとの衝突を直接判定)
     """
-    # グリッド上の空いているマスを全件取得して、ピースのブロックがそこに含まれるかチェック
-    # ただし、画面より上にはみ出している場合は有効とみなす
-    accepted_positions = [[(j, i) for j in range(GRID_WIDTH) if grid[i][j] == (0,0,0)] for i in range(GRID_HEIGHT)]
-    accepted_positions = [j for sub in accepted_positions for j in sub]
+    formatted_shape = convert_shape_format(piece)
 
-    formatted = convert_shape_format(piece)
+    for x, y in formatted_shape:
+        # グリッドの範囲外かチェック
+        if x < 0 or x >= GRID_WIDTH or y >= GRID_HEIGHT:
+            return False
+        # 他のブロックと衝突していないかチェック (y < 0 の場合は画面上部なので衝突判定は不要)
+        if y >= 0 and grid[y][x] != (0,0,0):
+            return False
 
-    for pos in formatted:
-        if pos not in accepted_positions:
-            if pos[1] > -1:
-                return False
     return True
 
 def check_game_over(grid):
@@ -210,6 +218,16 @@ def clear_lines(grid):
             y -= 1
     return lines_cleared
 
+def update_score_and_level(cleared_count, score, level, lines_cleared, fall_speed):
+    """スコア、レベル、落下速度を更新する"""
+    score += point_values.get(cleared_count, 0) * (level + 1)
+    lines_cleared += cleared_count
+    new_level = lines_cleared // 10
+    if new_level > level:
+        level = new_level
+        fall_speed = max(MIN_FALL_SPEED, INITIAL_FALL_SPEED - level * SPEED_INCREASE_PER_LEVEL)
+    return score, level, lines_cleared, fall_speed
+
 def get_shape():
     """
     ランダムな形状の新しいPieceオブジェクトを生成して返す
@@ -218,13 +236,13 @@ def get_shape():
 
 def draw_text_middle(surface, text, size, color):
     """画面中央にテキストを描画する"""
-    font = pygame.font.SysFont('comicsans', size, bold=True)
+    font = pygame.font.SysFont(FONT_NAME, size, bold=True)
     label = font.render(text, 1, color)
     surface.blit(label, (TOP_LEFT_X + PLAYFIELD_WIDTH/2 - (label.get_width()/2), TOP_LEFT_Y + PLAYFIELD_HEIGHT/2 - label.get_height()/2))
 
 def draw_next_shape(piece, surface):
     """「次のピース」を情報パネルに描画する"""
-    font = pygame.font.SysFont('comicsans', 30)
+    font = pygame.font.SysFont(FONT_NAME, FONT_SIZE_NORMAL)
     label = font.render('Next Shape', 1, WHITE)
 
     sx = TOP_LEFT_X + PLAYFIELD_WIDTH + 50
@@ -260,7 +278,7 @@ def draw_window(surface, grid, piece, next_piece=None, score=0, lines=0, level=0
             pygame.draw.rect(surface, piece.color, (TOP_LEFT_X + x * BLOCK_SIZE, TOP_LEFT_Y + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
 
     # UIテキストの描画
-    font = pygame.font.SysFont('comicsans', 30)
+    font = pygame.font.SysFont(FONT_NAME, FONT_SIZE_NORMAL)
     score_label = font.render(f'Score: {score}', 1, WHITE)
     level_label = font.render(f'Level: {level}', 1, WHITE)
     lines_label = font.render(f'Lines: {lines}', 1, WHITE)
@@ -306,7 +324,7 @@ def main():
     # ゲームクロックと重力設定
     clock = pygame.time.Clock()
     fall_time = 0
-    fall_speed = 0.3 # 秒 / 1ライン落下
+    fall_speed = INITIAL_FALL_SPEED # 秒 / 1ライン落下
 
     # ゲーム状態変数
     score = 0
@@ -329,12 +347,7 @@ def main():
 
                 cleared_count = clear_lines(grid)
                 if cleared_count > 0:
-                    lines_cleared += cleared_count
-                    score += point_values.get(cleared_count, 0) * (level + 1)
-                    # レベルアップチェック
-                    if lines_cleared // 10 > level:
-                        level = lines_cleared // 10
-                        fall_speed = max(0.1, 0.3 - level * 0.02)
+                    score, level, lines_cleared, fall_speed = update_score_and_level(cleared_count, score, level, lines_cleared, fall_speed)
 
                 current_piece = next_piece
                 next_piece = get_shape()
@@ -373,12 +386,7 @@ def main():
 
                     cleared_count = clear_lines(grid)
                     if cleared_count > 0:
-                        lines_cleared += cleared_count
-                        score += point_values.get(cleared_count, 0) * (level + 1)
-                        # レベルアップチェック
-                        if lines_cleared // 10 > level:
-                            level = lines_cleared // 10
-                            fall_speed = max(0.1, 0.3 - level * 0.02)
+                        score, level, lines_cleared, fall_speed = update_score_and_level(cleared_count, score, level, lines_cleared, fall_speed)
 
                     current_piece = next_piece
                     next_piece = get_shape()
@@ -391,7 +399,7 @@ def main():
         pygame.display.flip()
 
     # ゲームオーバー画面
-    draw_text_middle(screen, "GAME OVER", 80, WHITE)
+    draw_text_middle(screen, "GAME OVER", FONT_SIZE_LARGE, WHITE)
     pygame.display.flip()
     pygame.time.delay(3000)
 
