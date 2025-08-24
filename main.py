@@ -191,6 +191,23 @@ def lock_piece(piece, grid):
             grid[y][x] = piece.color
     return grid
 
+def clear_lines(grid):
+    """満たされた行をクリアし、新しい空の行を上部に追加する。消した行数を返す。"""
+    lines_cleared = 0
+    # 下から上にチェック
+    y = GRID_HEIGHT - 1
+    while y >= 0:
+        row = grid[y]
+        if (0,0,0) not in row: # この行が埋まっている
+            lines_cleared += 1
+            # この行を削除
+            del grid[y]
+            # 上に新しい空の行を追加
+            grid.insert(0, [(0,0,0) for _ in range(GRID_WIDTH)])
+        else:
+            y -= 1
+    return lines_cleared
+
 def get_shape():
     """
     ランダムな形状の新しいPieceオブジェクトを生成して返す
@@ -263,6 +280,7 @@ def main():
             if not valid_space(current_piece, grid) and current_piece.y > 0:
                 current_piece.y -= 1
                 grid = lock_piece(current_piece, grid)
+                clear_lines(grid) # ライン消去を呼び出す
                 current_piece = next_piece
                 next_piece = get_shape()
 
@@ -283,6 +301,26 @@ def main():
                     current_piece.x += 1
                     if not valid_space(current_piece, grid):
                         current_piece.x -= 1
+                if event.key == pygame.K_UP:
+                    current_piece.rotation += 1
+                    if not valid_space(current_piece, grid):
+                        current_piece.rotation -= 1
+                if event.key == pygame.K_DOWN:
+                    current_piece.y += 1
+                    if not valid_space(current_piece, grid):
+                        current_piece.y -= 1
+
+                if event.key == pygame.K_SPACE:
+                    while valid_space(current_piece, grid):
+                        current_piece.y += 1
+                    current_piece.y -= 1
+                    grid = lock_piece(current_piece, grid)
+                    clear_lines(grid) # ライン消去を呼び出す
+                    current_piece = next_piece
+                    next_piece = get_shape()
+                    if check_game_over(grid):
+                        running = False
+
 
         # 描画処理
         draw_window(screen, grid, current_piece)
