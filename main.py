@@ -6,6 +6,7 @@ import random
 SCREEN_WIDTH = 500
 SCREEN_HEIGHT = 700
 BLACK = (0, 0, 0)
+WHITE = (255, 255, 255)
 GRID_COLOR = (128, 128, 128) # グレー
 
 # プレイフィールドの定数
@@ -126,6 +127,7 @@ T = [['.....',
 # --- グローバル変数 ---
 shapes = [S, Z, I, O, J, L, T]
 shape_colors = [(0, 255, 0), (255, 0, 0), (0, 255, 255), (255, 255, 0), (255, 165, 0), (0, 0, 255), (128, 0, 128)] # Green, Red, Cyan, Yellow, Orange, Blue, Purple
+point_values = {1: 100, 2: 300, 3: 500, 4: 800}
 
 
 # --- Pieceクラス ---
@@ -214,7 +216,30 @@ def get_shape():
     """
     return Piece(5, 0, random.choice(shapes))
 
-def draw_window(surface, grid, piece):
+def draw_text_middle(surface, text, size, color):
+    """画面中央にテキストを描画する"""
+    font = pygame.font.SysFont('comicsans', size, bold=True)
+    label = font.render(text, 1, color)
+    surface.blit(label, (TOP_LEFT_X + PLAYFIELD_WIDTH/2 - (label.get_width()/2), TOP_LEFT_Y + PLAYFIELD_HEIGHT/2 - label.get_height()/2))
+
+def draw_next_shape(piece, surface):
+    """「次のピース」を情報パネルに描画する"""
+    font = pygame.font.SysFont('comicsans', 30)
+    label = font.render('Next Shape', 1, WHITE)
+
+    sx = TOP_LEFT_X + PLAYFIELD_WIDTH + 50
+    sy = TOP_LEFT_Y + PLAYFIELD_HEIGHT/2 - 100
+    shape_format = piece.shape[piece.rotation % len(piece.shape)]
+
+    for i, line in enumerate(shape_format):
+        row = list(line)
+        for j, column in enumerate(row):
+            if column == '0':
+                pygame.draw.rect(surface, piece.color, (sx + j*BLOCK_SIZE, sy + i*BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
+
+    surface.blit(label, (sx + 10, sy - 30))
+
+def draw_window(surface, grid, piece, next_piece=None, score=0, lines=0, level=0):
     """ウィンドウ全体を描画する（背景、グリッド、固定されたブロック、現在のピース）"""
     surface.fill(BLACK)
 
@@ -233,6 +258,22 @@ def draw_window(surface, grid, piece):
         x, y = pos
         if y > -1:
             pygame.draw.rect(surface, piece.color, (TOP_LEFT_X + x * BLOCK_SIZE, TOP_LEFT_Y + y * BLOCK_SIZE, BLOCK_SIZE, BLOCK_SIZE), 0)
+
+    # UIテキストの描画
+    font = pygame.font.SysFont('comicsans', 30)
+    score_label = font.render(f'Score: {score}', 1, WHITE)
+    level_label = font.render(f'Level: {level}', 1, WHITE)
+    lines_label = font.render(f'Lines: {lines}', 1, WHITE)
+
+    sx = TOP_LEFT_X + PLAYFIELD_WIDTH + 50
+    sy = TOP_LEFT_Y
+    surface.blit(score_label, (sx, sy + 150))
+    surface.blit(level_label, (sx, sy + 180))
+    surface.blit(lines_label, (sx, sy + 210))
+
+    # 次のピースを描画
+    if next_piece:
+        draw_next_shape(next_piece, surface)
 
 def draw_grid(surface):
     """プレイフィールドのグリッド線と枠線を描画する"""
@@ -267,6 +308,11 @@ def main():
     fall_time = 0
     fall_speed = 0.3 # 秒 / 1ライン落下
 
+    # ゲーム状態変数
+    score = 0
+    lines_cleared = 0
+    level = 0
+
     running = True
     # メインゲームループ
     while running:
@@ -280,7 +326,16 @@ def main():
             if not valid_space(current_piece, grid) and current_piece.y > 0:
                 current_piece.y -= 1
                 grid = lock_piece(current_piece, grid)
-                clear_lines(grid) # ライン消去を呼び出す
+
+                cleared_count = clear_lines(grid)
+                if cleared_count > 0:
+                    lines_cleared += cleared_count
+                    score += point_values.get(cleared_count, 0) * (level + 1)
+                    # レベルアップチェック
+                    if lines_cleared // 10 > level:
+                        level = lines_cleared // 10
+                        fall_speed = max(0.1, 0.3 - level * 0.02)
+
                 current_piece = next_piece
                 next_piece = get_shape()
 
@@ -315,7 +370,16 @@ def main():
                         current_piece.y += 1
                     current_piece.y -= 1
                     grid = lock_piece(current_piece, grid)
-                    clear_lines(grid) # ライン消去を呼び出す
+
+                    cleared_count = clear_lines(grid)
+                    if cleared_count > 0:
+                        lines_cleared += cleared_count
+                        score += point_values.get(cleared_count, 0) * (level + 1)
+                        # レベルアップチェック
+                        if lines_cleared // 10 > level:
+                            level = lines_cleared // 10
+                            fall_speed = max(0.1, 0.3 - level * 0.02)
+
                     current_piece = next_piece
                     next_piece = get_shape()
                     if check_game_over(grid):
@@ -323,10 +387,14 @@ def main():
 
 
         # 描画処理
-        draw_window(screen, grid, current_piece)
+        draw_window(screen, grid, current_piece, next_piece, score, lines_cleared, level)
         pygame.display.flip()
 
-    # Pygameを終了
+    # ゲームオーバー画面
+    draw_text_middle(screen, "GAME OVER", 80, WHITE)
+    pygame.display.flip()
+    pygame.time.delay(3000)
+
     pygame.quit()
     sys.exit()
 
